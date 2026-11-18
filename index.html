@@ -32,25 +32,25 @@
   .copy h1 {
     margin: 0;
     font-weight: 900;
-    font-size: clamp(30px, 5.2vw, 88px);
-    letter-spacing: -0.04em;           /* ≈ -3.5px at 88px */
+    font-size: clamp(26px, 3.4vw, 52px);
+    letter-spacing: -0.035em;
     line-height: 1;
     text-transform: uppercase;
     white-space: nowrap;
-    background-image: linear-gradient(90deg, var(--g1) 0%, var(--g2) 33%, var(--g3) 66%, var(--g4) 100%);
-    background-size: 130% 100%;
+    background-image: linear-gradient(90deg, var(--g1) 0%, var(--g2) 16%, var(--g3) 33%, var(--g4) 50%, var(--g3) 66%, var(--g2) 83%, var(--g1) 100%);
+    background-size: 250% 100%;
     background-position: 0% 50%;
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent; color: transparent;
-    animation: drift 14s ease-in-out infinite alternate;
+    animation: drift 9s ease-in-out infinite alternate;
   }
-  /* very soft gradient drift */
+  /* gentle gradient sweep across the heading */
   @keyframes drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
   .copy p {
-    margin: 22px 0 0;
+    margin: 18px 0 0;
     font-weight: 400;
-    font-size: clamp(12px, 1.25vw, 20px);
-    letter-spacing: 0.25em;            /* ≈ 5px at 20px */
+    font-size: clamp(11px, 1vw, 16px);
+    letter-spacing: 0.28em;
     line-height: 1.4;
     text-transform: uppercase;
     color: var(--sub);
