@@ -108,7 +108,7 @@
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     const area = W * H;
-    const n0 = Math.round(area / 4200), n1 = Math.round(area / 10000), n2 = Math.round(area / 46000);
+    const n0 = Math.round(area / 8000), n1 = Math.round(area / 20000), n2 = Math.round(area / 80000);
     stars = [];
     for (let i = 0; i < n0; i++) stars.push(makeStar(0));
     for (let i = 0; i < n1; i++) stars.push(makeStar(1));
