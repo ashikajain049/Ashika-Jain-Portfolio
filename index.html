@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ashika Jain — Product Designer</title>
 <link rel="preconnect" href="https://api.fontshare.com">
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,900&display=swap">
@@ -18,8 +18,8 @@
     --sub: #c8c0cd;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; background: var(--space); overflow: hidden; }
-  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+  html, body { height: 100%; height: 100dvh; margin: 0; background: var(--space); overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; z-index: 0; }
 
   /* ---------- text layer ---------- */
   .copy {
@@ -27,12 +27,12 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; pointer-events: none;
     font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
-    padding: 0 16px;
+    padding: 0 12px;
   }
   .copy h1 {
     margin: 0;
     font-weight: 900;
-    font-size: clamp(26px, 3.4vw, 52px);
+    font-size: clamp(12px, 5vw, 52px);   /* stays on one line at every width */
     letter-spacing: -0.035em;
     line-height: 1;
     text-transform: uppercase;
@@ -47,10 +47,11 @@
   /* gentle gradient sweep across the heading */
   @keyframes drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
   .copy p {
-    margin: 18px 0 0;
+    margin: clamp(10px, 2vw, 18px) 0 0;
     font-weight: 400;
-    font-size: clamp(11px, 1vw, 16px);
+    font-size: clamp(8px, 2.6vw, 16px);
     letter-spacing: 0.28em;
+    text-wrap: balance;
     line-height: 1.4;
     text-transform: uppercase;
     color: var(--sub);
@@ -274,6 +275,7 @@
     if (!mouse.init) { mouse.sx = mouse.x; mouse.sy = mouse.y; mouse.init = true; }
   });
   document.documentElement.addEventListener('mouseleave', () => { mouse.inside = false; });
+  window.addEventListener('pointerup', e => { if (e.pointerType === 'touch') mouse.inside = false; });
   window.addEventListener('blur', () => { mouse.inside = false; });
   window.addEventListener('resize', resize);
 
