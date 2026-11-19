@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>Ashika Jain — Product Designer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap">
 <style>
   * { box-sizing: border-box; }
-  html, body { height: 100%; height: 100dvh; margin: 0; background: #050506; overflow: hidden; }
+  html, body { height: 100%; height: 100dvh; margin: 0; background: #000; overflow: hidden; }
   canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   .lockup { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
@@ -194,8 +195,7 @@
     c=1.-exp(-c*1.25);
     c=pow(c,vec3(.92));
     float v=smoothstep(1.25,.25,length((uv-.5)*vec2(1.1,1.)));  c*=mix(.6,1.,v);
-    c=1.-(1.-c)*(1.-vec3(.0196,.0196,.0235));               /* the page's #050506, a deep black */
-    c+=(hash(gl_FragCoord.xy+fract(uTime)*91.)-.5)/160.;
+    c+=(hash(gl_FragCoord.xy+fract(uTime)*91.)-.5)/160.*smoothstep(0.,.03,max(c.r,max(c.g,c.b)));      /* film grain only where there is light, so the background stays exactly black */
     o=vec4(c,1.);
   }`;
 
