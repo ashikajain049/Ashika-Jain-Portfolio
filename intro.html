@@ -141,7 +141,8 @@
     float kf=clamp(min(uRes.x,uRes.y)/760.,.45,1.4);                                 /* smaller screens, shorter distances */
     pos+=(rad/rl*(50.+260.*a0.y)*kf*mix(.6,1.,clamp(D/4.,0.,1.)) + rad*.7)*m*surv;   /* radiating out from the name toward the ends of the screen */
     float settled=m*surv;
-    pos+=vec2(sin(uTime*.22+a0.y*40.)+.5*sin(uTime*.11+a0.z*17.), cos(uTime*.19+a0.z*40.)+.5*cos(uTime*.13+a0.y*23.))*(5.+6.*a1.z)*settled;   /* once settled, the stars keep floating very slowly, so the screen never feels still */
+    { float w1=.28+.3*a0.y, w2=.24+.3*a0.z, rr=(14.+24.*a1.z);                              /* once settled, every star keeps travelling on its own slow, looping path (a loop takes 10–25 s), so the sparkle never comes to rest */
+      pos+=vec2(cos(uTime*w1+a0.z*40.)+.4*cos(uTime*w1*.43+a0.y*17.), sin(uTime*w2+a0.y*40.)+.4*sin(uTime*w2*.37+a0.z*23.))*rr*settled; }
     float boost=0.;
     for(int i=0;i<8;i++){
       vec4 r=uRip[i];
