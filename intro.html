@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ashika Jain — Product Designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; height: 100dvh; margin: 0; background: #111214; overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .lockup { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  .name { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; line-height: 1.1;
+          font-family: 'Satoshi', system-ui, sans-serif; font-weight: 400; letter-spacing: -.03em; font-variant-ligatures: none;
+          font-size: clamp(2.375rem, 11vw, 4.25rem); }
+  .sp { display: inline-block; width: .26em; }
+  .ch { display: inline-block; opacity: 0; will-change: opacity, transform, filter; }
+  /* white-to-blue gradient across the whole name; a soft band of light glides through it */
+  .gl { display: inline-block; color: transparent; -webkit-background-clip: text; background-clip: text;
+        background-image: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%),
+                          linear-gradient(90deg, #F5F5F5 0%, #c9d6ff 25%, #86a0ff 50%, #c9d6ff 75%, #F5F5F5 100%);
+        background-size: 340% 100%, calc(var(--nw) * 1.6) 100%;
+        background-position: calc(var(--bp, 8) * 1%) 0, calc(var(--lx) * -1 - var(--gp, 0px)) 0; background-repeat: no-repeat, repeat-x; }
+  .role { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; opacity: 0; text-transform: uppercase;
+          font-family: 'Space Mono', ui-monospace, monospace; font-weight: 400; font-size: clamp(.8125rem, .5rem + .55vw, .9375rem); line-height: 1.4;
+          letter-spacing: .154em; padding-left: .154em; color: #A5A5A5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="lockup">
+  <div class="name" id="name" aria-label="Ashika Jain"></div>
+  <div class="role" id="role">Product Designer</div>
+</div>
+
+<script>
+/* ==========================================================================
+   An unseen spark flies the butterfly's flight (traced from the reference video), shedding a trail of sparkling stars and soft blue glow.
+   0s     it lifts up the left side, sweeps right across the top, turns, comes back left across the middle and slows to land on the first letter
+   3.8s   it lands — and from that instant two things happen together, with no pause:
+          the spark carries on along the name like a pen, writing it left to right (each letter fades in as the pen reaches it, faint first, then solid);
+          and the sparkle scatters — most of the flight's trail fades, the rest drifts out toward the ends of the screen, and a light sprinkle follows the pen
+   ~8.1s  the scatter carries on, slowing gradually, until "Product Designer" has fully appeared; after that the stars keep floating very slowly and blink gently, so the screen never feels still, and the pointer sends a soft ripple through them
+   Responsive: the name and designation scale with the screen (CSS); the flight and the scatter scale with the window; tall phone screens get a taller flight.
+   Debug: ?t=4 freezes at 4s.   Press R to replay.
+   ========================================================================== */
+(() => {
+  const DOT = false;                                                  /* (no full stop after the name) */
+  const NAME = 'Ashika Jain' + (DOT ? '.' : '');
+  const WHITE = [.93, .96, 1.0], BLUE = [.28, .46, 1.0];
+  const T = { tf: 3.8, name: 3.8, step: .2, ramp: 1.5 };
+
+  const cv = document.getElementById('c');
+  const gl = cv.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+  const nameEl = document.getElementById('name'), roleEl = document.getElementById('role'), lockupEl = document.querySelector('.lockup');
+  const params = new URLSearchParams(location.search);
+  const FIX = params.has('t') ? parseFloat(params.get('t')) : null;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const seg = (t, a, b) => clamp((t - a) / (b - a));
+  const eIO = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  const eOut = x => 1 - Math.pow(1 - x, 3);
+  const eRun = x => 1 - Math.pow(1 - x, 2.2);
+  const eBack = x => { const c1 = 1.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  const eExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  let tgt = [0, 0], W, H, dpr, rs, R, fontPx, cyUp, letters = [], t0 = 0, raf = 0, done = false, N = 0, baseY = 0, nameMidY = 0, quality = 1, rsCap = 1.5, lastNow = 0, slow = 0, frames = 0;
+  const mouse = { x: -999, y: -999, nx: 0, ny: 0, sx: 0, sy: 0, in: false };
+
+  /* ------------------------------------------------------------ shaders */
+  const VS_P = `#version 300 es
+  precision highp float;
+  in vec4 a0; in vec4 a1;                              /* eight random numbers per star */
+  uniform float uTime, uTf, uLife, uScale, uAx, uAy, uR;
+  uniform float uTe, uNL, uName, uStep, uEnd;
+  uniform vec2 uS;                                     /* the flight's scale: x, y (px per video pixel) */
+  uniform float uLx[12];                               /* the x of each letter of the name, px from the centre */
+  uniform vec2 uNameC;                                 /* the middle of the name */
+  uniform vec4 uRip[8];                                /* pointer ripples: x, y (px from the centre), age, power */
+  uniform vec2 uRes, uTarget; uniform vec3 uWhite, uBlue;
+  out vec3 vCol; out vec4 vShape;
+  const float TAU = 6.2831853;
+  /* the flight of an invisible leader, traced from the butterfly in the reference video (one full flight, sampled every 0.1s): it lifts up the left side,
+     sweeps fast across the top to the right, turns at the far side, comes back left across the middle and slows to settle — which here is the first
+     letter of the name. The video's own proportions are kept (uS scales its 234x360 frame; the whole flight is then shifted so it ends at the name). */
+  const int NW=31;
+  const vec2 WP[31]=vec2[31](
+    vec2(0.117,0.521),vec2(0.113,0.503),vec2(0.110,0.482),vec2(0.109,0.458),vec2(0.111,0.432),vec2(0.115,0.404),vec2(0.126,0.372),vec2(0.149,0.336),vec2(0.187,0.305),vec2(0.243,0.286),vec2(0.321,0.281),vec2(0.422,0.282),vec2(0.537,0.295),vec2(0.647,0.325),vec2(0.737,0.364),vec2(0.806,0.397),vec2(0.853,0.417),vec2(0.879,0.431),vec2(0.881,0.447),vec2(0.856,0.468),vec2(0.800,0.487),vec2(0.718,0.497),vec2(0.626,0.502),vec2(0.541,0.508),vec2(0.472,0.515),vec2(0.416,0.519),vec2(0.371,0.525),vec2(0.333,0.533),vec2(0.303,0.538),vec2(0.283,0.542),vec2(0.271,0.547)
+  );
+  vec2 wp(int i){
+    i=clamp(i,0,NW-1);
+    vec2 q=WP[i]; return vec2((q.x-.5)*234.,(.405-q.y)*360.)*uS;
+  }
+  float headX(float tau){
+    float f=clamp((tau-uName)/uStep,0.,uNL-1.); int i0=int(floor(f)); int i1=min(i0+1,int(uNL)-1);
+    return mix(uLx[i0],uLx[i1],f-float(i0));
+  }
+  vec2 path(float tau){
+    if(tau>=uTf) return vec2(headX(tau), uTarget.y+sin(tau*9.)*3.);       /* once landed, the spark writes the name, left to right, like a pen */
+    float u=clamp(tau/uTf,0.,1.);
+    float sp=u*float(NW-1); int i=int(floor(sp)); float f=sp-float(i);
+    vec2 p0=wp(i-1), p1=wp(i), p2=wp(i+1), p3=wp(i+2);
+    vec2 p=.5*((2.*p1)+(-p0+p2)*f+(2.*p0-5.*p1+4.*p2-p3)*f*f+(-p0+3.*p1-3.*p2+p3)*f*f*f);
+    vec2 e=wp(NW-1);
+    p+=vec2((uTarget.x-e.x)*smoothstep(.5,1.,u), uTarget.y-e.y);          /* the landing spot is the first letter of the name */
+    return p+vec2(sin(tau*7.1),cos(tau*5.3))*3.*(1.-u*u);                /* a light flutter */
+  }
+  void main(){
+    float tb=.15+a0.x*(uTe-.15);                        /* the moment the leader shed this star */
+    float writer=step(uTf,tb);                           /* stars shed while the name is being written */
+    float tEff=min(uTime,uTe+1.2), ageD=tEff-tb;
+    float surv=step(mix(.95,.88,writer),a0.w)*step(a1.z,.86)*(1.-writer*step(uEnd-1.8,tb));   /* (stars shed too late in the writing don't scatter: they just fade) */            /* some of the stars stay: they scatter across the sky and keep twinkling */
+    float lifeK=mix(uLife*1.2*(.7+.6*a0.w)*(1.+.5*smoothstep(0.,uTf*.5,tb))*(1.+1.6*smoothstep(uTf-2.8,uTf-.8,tb)),uLife*.55*(.7+.6*a0.w),writer)*(1.+2.*surv);   /* the pen's sparkle is short-lived; the rest of the trail lingers a little */
+    float alive=step(0.,ageD);
+
+    /* the star drifts off the trail like dust */
+    float ang=a1.y*TAU, sp=(.25+.75*a1.x)*uR*.22;
+    vec2 pos=path(tb) + (a0.yz-.5)*6.
+           + vec2(cos(ang),sin(ang))*sp*ageD
+           + vec2(sin(ageD*1.3+a1.z*30.),cos(ageD*1.1+a1.w*30.))*uR*.035*a1.x*min(ageD,2.5);
+
+    float env=smoothstep(0.,.1,ageD)*mix(1.-smoothstep(.3*lifeK,lifeK,ageD),1.,surv);        /* the stars that stay never fade */
+    float hot=exp(-max(ageD,0.)*2.5);
+
+    /* The spark lands on the first letter and writes the name — and at that same moment the sparkle begins to scatter, so the two happen together.
+       Most of the trail from the flight vanishes as the spark lands. Some stars have already set off, drifting slowly and calmly out toward the ends of
+       the screen; the stars shed by the pen follow it along the name and then drift out in the same way, once the pen has passed. */
+    float thin=mix(mix(1.-smoothstep(uTf-.4+.4*a1.w,uTf+.9+.4*a1.w,uTime),1.,surv),1.,writer);
+    float penVis=mix(1.,mix(.55*step(a0.y,.3),1.,surv),writer);                      /* only a light sprinkle of sparkle goes with the pen */
+    float ts=max(uTf-.6,tb+.2)+.3*a1.w*(1.-writer);
+    float D=max(1.6,uEnd-ts);                                                        /* the scatter is finished by the time the name is written */
+    float m=clamp((uTime-ts)/D,0.,1.); m=1.-pow(1.-m,1.7);
+    vec2 rad=pos-uNameC; float rl=length(rad)+1e-3;
+    float kf=clamp(min(uRes.x,uRes.y)/760.,.45,1.4);                                 /* smaller screens, shorter distances */
+    pos+=(rad/rl*(50.+260.*a0.y)*kf*mix(.6,1.,clamp(D/4.,0.,1.)) + rad*.7)*m*surv;   /* radiating out from the name toward the ends of the screen */
+    float settled=m*surv;
+    pos+=vec2(sin(uTime*.22+a0.y*40.)+.5*sin(uTime*.11+a0.z*17.), cos(uTime*.19+a0.z*40.)+.5*cos(uTime*.13+a0.y*23.))*(5.+6.*a1.z)*settled;   /* once settled, the stars keep floating very slowly, so the screen never feels still */
+    float boost=0.;
+    for(int i=0;i<8;i++){
+      vec4 r=uRip[i];
+      if(r.w>0.){
+        vec2 dd=pos-r.xy; float dist=length(dd)+1e-3, off=dist-r.z*260.;
+        if(abs(off)<60.){ float k=exp(-off*off/1400.)*(1.-r.z/2.4)*r.w*settled; pos+=dd/dist*k*5.*(.4+a1.z); boost+=k; }
+      }
+    }
+    float gone=1.;
+
+    gl_Position=vec4(pos.x/(uRes.x*.5), pos.y/(uRes.y*.5), 0., 1.);
+
+    float haze=step(.86,a1.z);                           /* a few soft blue wisps among the sparks */
+    float big=step(.93,a1.w);                           /* a few star-shaped glints */
+    float elong=(haze>.5||big>.5) ? 1. : 1.+2.6*step(.45,a1.x);   /* many sparks are longer, streaking the way they drift */
+    float tw=.3+.7*pow(.5+.5*sin(uTime*(2.+a1.y*4.)+a1.x*50.),2.);   /* sparkle */
+    float tws=.5+.5*sin(uTime*(.5+a1.y*1.1)+a1.x*50.);
+    tw=mix(tw,.3+.7*tws,settled);                                    /* once scattered, only a minimal, slow blink */
+    elong=1.+(elong-1.)*(1.-settled);
+    vShape=vec4(ang, elong, big, haze);
+    gl_PointSize=(haze>.5 ? 10.+a1.w*16. : big>.5 ? 7.+a1.w*4. : max(.9+a1.w*a1.w*1.4+hot*.3,1.3*settled)*elong*(1.+boost*.3))*uScale*clamp(min(uRes.x,uRes.y)/900.,.65,1.);        /* smaller screens, finer stars */
+    float a=alive*env*gone*thin*penVis*(haze>.5 ? .07*(.5+hot) : (.35+.4*a1.x)*tw*(1.+.6*hot*(1.-.7*writer)+big))*(1.+boost*1.2)*mix(1.,1.1,settled);
+    float life01=clamp(ageD/lifeK,0.,1.);
+    vec3 glow=mix(vec3(.25,.72,1.), vec3(.14,.3,1.), smoothstep(0.,.75,life01));    /* bright sky-blue by the spark, deepening to blue as it drifts away */
+    vCol=(haze>.5 ? glow : mix(uWhite,glow,smoothstep(.1,.9,life01)*.7+(1.-hot)*.1)+big*.2)*a;
+  }`;
+  const FS_P = `#version 300 es
+  precision highp float; in vec3 vCol; in vec4 vShape; out vec4 o;
+  void main(){ vec2 c=gl_PointCoord-.5; c.y=-c.y;
+    float ca=cos(vShape.x), sa=sin(vShape.x); vec2 q=vec2(c.x*ca+c.y*sa, -c.x*sa+c.y*ca);
+    float r=length(vec2(q.x,q.y*vShape.y))*2.*(1.+3.*vShape.z);
+    float crisp=clamp(1.-r,0.,1.); crisp=crisp*crisp*(3.-2.*crisp);
+    float soft=exp(-r*r*3.5)*clamp(1.-r,0.,1.);
+    float f=mix(crisp,soft,vShape.w);
+    vec2 aq=abs(c)*2.;
+    float arms=(exp(-aq.x*6.)*exp(-aq.y*55.)+exp(-aq.y*6.)*exp(-aq.x*55.))*(1.-smoothstep(.75,1.,max(aq.x,aq.y)));
+    f=max(f,arms*vShape.z);
+    o=vec4(vCol*f,1.); }`;
+
+  const VS_Q = `#version 300 es
+  out vec2 uv; void main(){ vec2 p=vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); uv=p; gl_Position=vec4(p*2.-1.,0.,1.); }`;
+  const FS_BLUR = `#version 300 es
+  precision highp float; in vec2 uv; out vec4 o; uniform sampler2D uTex; uniform vec2 uDir;
+  void main(){ vec4 s=texture(uTex,uv)*.227027;
+    s+=(texture(uTex,uv+uDir*1.3846)+texture(uTex,uv-uDir*1.3846))*.3162162; s+=(texture(uTex,uv+uDir*3.2308)+texture(uTex,uv-uDir*3.2308))*.0702703; o=s; }`;
+  const FS_COMP = `#version 300 es
+  precision highp float; in vec2 uv; out vec4 o; uniform sampler2D uScene, uB1, uB2; uniform float uTime;
+  float hash(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
+  void main(){
+    vec3 c=texture(uScene,uv).rgb + texture(uB1,uv).rgb*.35 + texture(uB2,uv).rgb*.5;
+    c=1.-exp(-c*1.25);
+    c=pow(c,vec3(.92));
+    float v=smoothstep(1.25,.25,length((uv-.5)*vec2(1.1,1.)));  c*=mix(.6,1.,v);
+    c=1.-(1.-c)*(1.-vec3(.067,.071,.078));                 /* the page's #111214 */
+    c+=(hash(gl_FragCoord.xy+fract(uTime)*91.)-.5)/160.;
+    o=vec4(c,1.);
+  }`;
+
+  function prog(vs, fs) {
+    const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(sh)); return sh; };
+    const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('shader link failed: ' + gl.getProgramInfoLog(p));
+    const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
+    return { p, u };
+  }
+
+  /* ------------------------------------------------------------ gpu setup */
+  let PP, PB, PC, vaoP, vaoQ, buf, targets = {};
+  const floatOK = !!(gl && (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')));
+
+  function target(w, h) {
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    if (floatOK) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null); else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.LINEAR));
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE));
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    return { tex, fb, w, h };
+  }
+
+  function buildParticles() {
+    N = Math.round(Math.min(44000, W * H / 15) * quality);
+    const a = new Float32Array(N * 8);
+    for (let i = 0; i < N; i++) {
+      const j = i * 8;
+      a[j] = Math.random();
+      a[j + 1] = Math.random();
+      a[j + 2] = Math.random(); a[j + 3] = Math.random();
+      a[j + 4] = Math.random(); a[j + 5] = Math.random(); a[j + 6] = Math.random(); a[j + 7] = Math.random();
+    }
+    if (buf) gl.deleteBuffer(buf);
+    buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW);
+    vaoP = gl.createVertexArray(); gl.bindVertexArray(vaoP);
+    [['a0', 4, 0], ['a1', 4, 16]].forEach(([nm, sz, off]) => { const loc = gl.getAttribLocation(PP.p, nm); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, 32, off); });
+  }
+
+  function layout() {
+    dpr = Math.min(devicePixelRatio || 1, 2); rs = Math.min(rsCap, Math.max(dpr, 1.5));
+    const box = lockupEl.getBoundingClientRect(); W = box.width; H = box.height;     /* the box the canvas and the name actually fill */
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    R = Math.min(W * .27, H * .27);
+    fontPx = parseFloat(getComputedStyle(nameEl).fontSize);           /* the name's size comes from the stylesheet and scales with the screen */
+    nameMidY = H * .455; cyUp = H / 2 - nameMidY;
+    nameEl.style.top = (nameMidY - fontPx * .55) + 'px';
+    roleEl.style.top = (nameMidY + fontPx * .55 + fontPx * .235) + 'px';      /* the gap keeps its proportion to the name */
+    targets = { scene: target(Math.round(W * rs), Math.round(H * rs)) };
+    const sw = targets.scene.w, sh = targets.scene.h;
+    Object.assign(targets, { ha: target(sw >> 1, sh >> 1), hb: target(sw >> 1, sh >> 1), qa: target(sw >> 2, sh >> 2), qb: target(sw >> 2, sh >> 2) });
+  }
+
+  function buildLetters() {
+    nameEl.innerHTML = [...NAME].map(c => c === ' ' ? '<span class="sp"></span>' : `<span class="ch"><span class="gl">${c}</span></span>`).join('') +
+      '<span id="probe" style="display:inline-block;width:0;height:0"></span>';
+    baseY = document.getElementById('probe').getBoundingClientRect().top;
+    const chs = [...nameEl.querySelectorAll('.ch')]; let minX = 1e9, maxX = -1e9;
+    letters = chs.map(el => { const r = el.getBoundingClientRect(); minX = Math.min(minX, r.left); maxX = Math.max(maxX, r.right);
+      return { el, gl: el.firstChild, ch: el.textContent, x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, p: 0 }; });
+    letters.forEach((l, i) => l.t0 = T.name + i * T.step + 0);
+    letters.forEach(l => l.ramp = T.ramp);
+    tgt = [letters[0].x - W / 2, cyUp];                 /* the stars gather where the first letter will stand */
+    letters.forEach(l => { l.gl.style.setProperty('--nw', (maxX - minX) + 'px'); l.gl.style.setProperty('--lx', (l.left - minX) + 'px'); });
+  }
+
+  /* ------------------------------------------------------------ frame */
+  /* where the name is being written right now: the stars flow into this point */
+  let curT = 0;
+  /* pointer ripples, after the coming-soon page but gentler: moving the pointer (every ~90px) or pressing sends a soft wave through the stars */
+  const ripples = []; let lastRx = -1e9, lastRy = -1e9, lastRt = 0; const ripBuf = new Float32Array(32);
+  const spawnRipple = (x, y, power) => { if (ripples.length >= 8) ripples.shift(); ripples.push({ x: x - W / 2, y: H / 2 - y, age: 0, power }); };
+  function ripplePack(t) {
+    const dt = clamp(t - lastRt, 0, .1); lastRt = t; ripBuf.fill(0);
+    for (let i = ripples.length - 1; i >= 0; i--) { ripples[i].age += dt; if (ripples[i].age >= 2.4) ripples.splice(i, 1); }
+    ripples.forEach((r, i) => { ripBuf[i * 4] = r.x; ripBuf[i * 4 + 1] = r.y; ripBuf[i * 4 + 2] = r.age; ripBuf[i * 4 + 3] = r.power; });
+    return ripBuf;
+  }
+  function draw(t) {
+    curT = t;
+    const fade = 1;
+    mouse.sx += (mouse.nx - mouse.sx) * .04; mouse.sy += (mouse.ny - mouse.sy) * .04;
+    const S = targets.scene;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, S.fb); gl.viewport(0, 0, S.w, S.h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(PP.p); gl.bindVertexArray(vaoP);
+    gl.uniform1f(PP.u.uTime, t); gl.uniform1f(PP.u.uTf, T.tf); gl.uniform1f(PP.u.uLife, 2.2); gl.uniform1f(PP.u.uScale, rs); gl.uniform1f(PP.u.uR, R);
+    gl.uniform1f(PP.u.uAx, W * .46); gl.uniform1f(PP.u.uAy, H * .44);
+    gl.uniform2f(PP.u.uRes, W, H); gl.uniform2f(PP.u.uTarget, tgt[0], tgt[1]); gl.uniform4fv(PP.u['uRip[0]'], ripplePack(t));
+    { const n = letters.length, lx = new Float32Array(12); for (let i = 0; i < Math.min(n, 12); i++) lx[i] = letters[i].x - W / 2;
+      gl.uniform1fv(PP.u['uLx[0]'], lx); gl.uniform1f(PP.u.uNL, Math.min(n, 12)); gl.uniform1f(PP.u.uName, T.name); gl.uniform1f(PP.u.uStep, T.step);
+      gl.uniform1f(PP.u.uTe, T.name + (n - 1) * T.step); gl.uniform1f(PP.u.uEnd, T.name + (n - 1) * T.step + T.ramp + 1.0);      /* the scatter keeps going until "Product Designer" has fully appeared */ gl.uniform2f(PP.u.uNameC, n ? (lx[0] + lx[Math.min(n, 12) - 1]) / 2 : 0, cyUp); } { const syCap = (H * .43 - Math.abs(cyUp)) / 106.5, sx = Math.min(W * .00442, syCap), boost = clamp(H / W * .8, 1, 1.9);   /* tall phone screens get a little more height */
+      gl.uniform2f(PP.u.uS, sx, Math.min(sx * boost, syCap)); }
+    gl.uniform3f(PP.u.uWhite, ...WHITE); gl.uniform3f(PP.u.uBlue, ...BLUE);
+    gl.drawArrays(gl.POINTS, 0, N);
+    gl.disable(gl.BLEND);
+
+    gl.bindVertexArray(vaoQ); gl.useProgram(PB.p); gl.uniform1i(PB.u.uTex, 0); gl.activeTexture(gl.TEXTURE0);
+    const blur = (src, dst, dx, dy) => { gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fb); gl.viewport(0, 0, dst.w, dst.h); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+      gl.uniform2f(PB.u.uDir, dx / src.w * 1.4, dy / src.h * 1.4); gl.drawArrays(gl.TRIANGLES, 0, 3); };
+    blur(S, targets.ha, 1, 0); blur(targets.ha, targets.hb, 0, 1);
+    blur(targets.hb, targets.qa, 1, 0); blur(targets.qa, targets.qb, 0, 1);
+    blur(targets.qb, targets.qa, 2, 0); blur(targets.qa, targets.qb, 0, 2);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); gl.useProgram(PC.p);
+    [[S, 0, 'uScene'], [targets.hb, 1, 'uB1'], [targets.qb, 2, 'uB2']].forEach(([tg, unit, nm]) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(PC.u[nm], unit); });
+    gl.uniform1f(PC.u.uTime, t); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    updateText(t);
+  }
+
+  /* the name resolves out of the wave; a soft light band glides through the gradient */
+  function updateText(t) {
+    const n = letters.length, allDone = letters[n - 1].t0 + letters[n - 1].ramp, glint = -1;
+    for (let i = 0; i < n; i++) {
+      const L = letters[i], s0 = L.t0, q = seg(t, s0, s0 + L.ramp), o = q < 0.001 ? 0 : lerp(.07, 1, eIO(q));
+      let bp = lerp(86, 8, eIO(seg(t, s0 + .1, s0 + L.ramp + .4)));
+      if (glint >= 0) bp = lerp(86, 8, eIO(seg(glint - i * .08, 0, 1.3)));
+      const s = L.el.style;
+      s.opacity = o < .001 ? 0 : o;
+      L.gl.style.setProperty('--bp', bp.toFixed(1)); L.gl.style.setProperty('--gp', (t * 38 % 1e6).toFixed(1) + 'px');
+    }
+    const rs0 = allDone - .4, rp = eIO(seg(t, rs0, rs0 + 1.4));
+    roleEl.style.opacity = rp; 
+    if (!done && t > allDone + .4) { done = true; document.dispatchEvent(new CustomEvent('intro:complete')); }
+  }
+
+  /* the animation's own clock: a hitch (shader compile, a busy machine) never makes it skip ahead, so every stage always plays */
+  let clock = 0, prevNow = 0;
+  function frame(now) {
+    if (!prevNow) t0 = now;
+    clock += prevNow ? Math.min((now - prevNow) / 1000, .25) : 0; prevNow = now;
+    draw(FIX !== null ? FIX : clock);
+    /* safety net: if the first seconds render slowly, quietly thin the particle count and resolution */
+    if (FIX === null && quality > .3 && (now - t0) > 300 && (now - t0) < 4000 && lastNow) {
+      frames++; if (now - lastNow > 26) slow++;
+      if (frames >= 30) { if (slow > 12) { quality = Math.max(.2, quality * .7); rsCap = Math.max(1, rsCap - .25); layout(); buildParticles(); } frames = 0; slow = 0; }
+    }
+    lastNow = now; raf = requestAnimationFrame(frame);
+  }
+  function play() { cancelAnimationFrame(raf); done = false; clock = 0; prevNow = 0; raf = requestAnimationFrame(frame); }
+
+  /* if WebGL is unavailable or a shader fails on some GPU, the name still appears, softly, instead of a blank page */
+  function plain() {
+    cancelAnimationFrame(raf); cv.style.display = 'none';
+    if (!letters.length) { layout(); buildLetters(); }
+    T.name = .2; letters.forEach((l, i) => l.t0 = T.name + i * T.step);
+    const tick = now => { if (!t0) t0 = now; updateText((now - t0) / 1000); raf = requestAnimationFrame(tick); }; raf = requestAnimationFrame(tick);
+  }
+  async function start() {
+    if (!gl) { nameEl.innerHTML = 'Ashika Jain'; nameEl.style.opacity = 1; return; }
+    try {
+      PP = PP || prog(VS_P, FS_P); PB = PB || prog(VS_Q, FS_BLUR); PC = PC || prog(VS_Q, FS_COMP); vaoQ = vaoQ || gl.createVertexArray();
+      layout(); buildLetters(); buildParticles();
+      if (reduced) draw(20); else play();                 /* the animation starts at once; it never waits for the fonts */
+      /* when the fonts arrive, re-measure the name (long before the name appears) */
+      Promise.race([Promise.all([document.fonts.load('400 60px Satoshi', NAME), document.fonts.load('400 13px "Space Mono"', 'PRODUCT DESIGNER')]), new Promise(r => setTimeout(r, 4000))])
+        .catch(() => {}).then(() => { buildLetters(); if (reduced) draw(20); });
+    } catch (e) { console.error(e); plain(); }
+  }
+  addEventListener('pointermove', e => { if (Math.hypot(e.clientX - lastRx, e.clientY - lastRy) > 90) { lastRx = e.clientX; lastRy = e.clientY; spawnRipple(e.clientX, e.clientY, .5); } mouse.x = e.clientX; mouse.y = e.clientY; mouse.nx = e.clientX / W - .5; mouse.ny = e.clientY / H - .5; mouse.in = true; });
+  document.documentElement.addEventListener('mouseleave', () => mouse.in = false);
+  addEventListener('pointerdown', e => spawnRipple(e.clientX, e.clientY, .8));
+  addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') play(); });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); buildLetters(); buildParticles(); }, 150); });
+  start();
+})();
+</script>
+</body>
+</html>
