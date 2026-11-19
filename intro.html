@@ -15,7 +15,7 @@
 
   .lockup { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   .name { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; line-height: 1.1;
-          font-family: 'Satoshi', system-ui, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: -.03em; font-variant-ligatures: none;
+          font-family: 'Satoshi', system-ui, sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: -.03em; font-variant-ligatures: none;
           font-size: clamp(2.375rem, 11vw, 4.25rem); }
   .sp { display: inline-block; width: .26em; }
   .ch { display: inline-block; opacity: 0; will-change: opacity, transform, filter; }
@@ -355,7 +355,7 @@
       layout(); buildLetters(); buildParticles();
       if (reduced) draw(20); else play();                 /* the animation starts at once; it never waits for the fonts */
       /* when the fonts arrive, re-measure the name (long before the name appears) */
-      Promise.race([Promise.all([document.fonts.load('600 60px Satoshi', NAME), document.fonts.load('400 13px "Space Mono"', 'PRODUCT DESIGNER')]), new Promise(r => setTimeout(r, 4000))])
+      Promise.race([Promise.all([document.fonts.load('700 60px Satoshi', NAME), document.fonts.load('400 13px "Space Mono"', 'PRODUCT DESIGNER')]), new Promise(r => setTimeout(r, 4000))])
         .catch(() => {}).then(() => { buildLetters(); if (reduced) draw(20); });
     } catch (e) { console.error(e); plain(); }
   }
