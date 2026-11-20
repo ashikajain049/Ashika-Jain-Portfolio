@@ -31,6 +31,23 @@
   .role { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; opacity: 0; text-transform: uppercase;
           font-family: 'Space Mono', ui-monospace, monospace; font-weight: 400; font-size: clamp(.8125rem, .5rem + .55vw, .9375rem); line-height: 1.4;
           letter-spacing: .154em; padding-left: .154em; color: #A5A5A5; }
+  /* the sound switch: a small glass pill, quiet until it is needed */
+  .sndwrap { position: fixed; z-index: 3; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 8px; }
+  .snd { display: flex; align-items: center; gap: 10px;
+         padding: 10px 16px 10px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06);
+         -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: #A5A5A5; cursor: pointer; opacity: 0; -webkit-tap-highlight-color: transparent;
+         font: 400 11px/1 'Space Mono', ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
+         animation: sndIn .9s ease 1.2s forwards; transition: color .3s, border-color .3s; }
+  .snd[aria-pressed="false"]:not([data-user]) { animation: sndIn .9s ease 1.2s forwards, sndPulse 2.6s ease-in-out 2.4s infinite; }
+  .snd:hover, .snd:focus-visible { color: #fff; border-color: rgba(134,160,255,.55); outline: none; }
+  .snd .bars { display: flex; align-items: center; gap: 2px; height: 12px; }
+  .snd .bars i { width: 2px; height: 3px; border-radius: 2px; background: currentColor; }
+  .snd[aria-pressed="true"] .bars i { animation: sndEq 1.1s ease-in-out infinite; }
+  .snd .bars i:nth-child(2) { animation-delay: -.35s !important; } .snd .bars i:nth-child(3) { animation-delay: -.7s !important; }
+  @keyframes sndIn { to { opacity: 1; } }
+  @keyframes sndEq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+  @keyframes sndPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(134,160,255,0); } 50% { box-shadow: 0 0 0 7px rgba(134,160,255,.13); } }
+  @media (prefers-reduced-motion: reduce) { .snd, .snd .bars i { animation: none !important; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -39,6 +56,7 @@
   <div class="name" id="name" aria-label="Ashika Jain"></div>
   <div class="role" id="role">Product Designer</div>
 </div>
+<div class="sndwrap"><button class="snd" id="snd" type="button" aria-pressed="false" aria-label="Sound"><span class="bars"><i></i><i></i><i></i></span><span id="sndTxt">Tap for sound</span></button></div>
 
 <script>
 /* ==========================================================================
@@ -74,7 +92,7 @@
   const eExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
   const lerp = (a, b, t) => a + (b - a) * t;
 
-  let tgt = [0, 0], W, H, dpr, rs, R, fontPx, cyUp, letters = [], t0 = 0, raf = 0, done = false, N = 0, baseY = 0, nameMidY = 0, quality = 1, rsCap = 3, lastNow = 0, slow = 0, frames = 0;
+  let tgt = [0, 0], W, H, dpr, rs, R, fontPx, cyUp, letters = [], t0 = 0, raf = 0, done = false, N = 0, baseY = 0, nameMidY = 0, quality = 1, drawFrac = 1, rsCap = 3, lastNow = 0, slow = 0, frames = 0;
   const mouse = { x: -999, y: -999, nx: 0, ny: 0, sx: 0, sy: 0, in: false };
 
   /* ------------------------------------------------------------ shaders */
@@ -274,7 +292,7 @@
   let curT = 0;
   /* pointer ripples, after the coming-soon page but gentler: moving the pointer (every ~90px) or pressing sends a soft wave through the stars */
   const ripples = []; let lastRx = -1e9, lastRy = -1e9, lastRt = 0; const ripBuf = new Float32Array(32);
-  const spawnRipple = (x, y, power) => { if (ripples.length >= 8) ripples.shift(); ripples.push({ x: x - W / 2, y: H / 2 - y, age: 0, power }); };
+  const spawnRipple = (x, y, power) => { sfx.touch(x / W, power); if (ripples.length >= 8) ripples.shift();ripples.push({ x: x - W / 2, y: H / 2 - y, age: 0, power }); };
   function ripplePack(t) {
     const dt = clamp(t - lastRt, 0, .1); lastRt = t; ripBuf.fill(0);
     for (let i = ripples.length - 1; i >= 0; i--) { ripples[i].age += dt; if (ripples[i].age >= 2.4) ripples.splice(i, 1); }
@@ -298,7 +316,7 @@
       gl.uniform1f(PP.u.uTe, T.name + (n - 1) * T.step); gl.uniform1f(PP.u.uEnd, T.name + (n - 1) * T.step + T.ramp + 1.0);      /* the scatter keeps going until "Product Designer" has fully appeared */ gl.uniform2f(PP.u.uNameC, n ? (lx[0] + lx[Math.min(n, 12) - 1]) / 2 : 0, cyUp); } { const syCap = (H * .43 - Math.abs(cyUp)) / 106.5, sx = Math.min(W * .00442, syCap), boost = clamp(H / W * .8, 1, 1.9);   /* tall phone screens get a little more height */
       gl.uniform2f(PP.u.uS, sx, Math.min(sx * boost, syCap)); }
     gl.uniform3f(PP.u.uWhite, ...WHITE); gl.uniform3f(PP.u.uBlue, ...BLUE);
-    gl.drawArrays(gl.POINTS, 0, N);
+    gl.drawArrays(gl.POINTS, 0, Math.floor(N * drawFrac));
     gl.disable(gl.BLEND);
 
     gl.bindVertexArray(vaoQ); gl.useProgram(PB.p); gl.uniform1i(PB.u.uTex, 0); gl.activeTexture(gl.TEXTURE0);
@@ -328,7 +346,7 @@
     }
     const rs0 = allDone - .4, rp = eIO(seg(t, rs0, rs0 + 1.4));
     roleEl.style.opacity = rp; 
-    if (!done && t > allDone + .4) { done = true; document.dispatchEvent(new CustomEvent('intro:complete')); }
+    if (!done && t > allDone + .4) { done = true; document.dispatchEvent(new CustomEvent('intro:complete')); try { parent !== window && parent.postMessage('intro:complete', '*'); } catch (e) {} }
   }
 
   /* the animation's own clock: a hitch (shader compile, a busy machine) never makes it skip ahead, so every stage always plays */
@@ -337,14 +355,155 @@
     if (!prevNow) t0 = now;
     clock += prevNow ? Math.min((now - prevNow) / 1000, .25) : 0; prevNow = now;
     draw(FIX !== null ? FIX : clock);
-    /* safety net: if the first seconds render slowly, quietly thin the particle count and resolution */
-    if (FIX === null && quality > .3 && (now - t0) > 300 && (now - t0) < 4000 && lastNow) {
-      frames++; if (now - lastNow > 26) slow++;
-      if (frames >= 30) { if (slow > 12) { quality = Math.max(.2, quality * .7); rsCap = Math.max(1.5, rsCap - .5); layout(); buildParticles(); } frames = 0; slow = 0; }
+    /* safety net, for genuinely slow devices only: after a warm-up (the first frames always hitch while shaders compile), if most frames are slow,
+       quietly draw a few fewer stars — never rebuilding them, so the sparkle never jumps — and only then lower the resolution a little */
+    if (FIX === null && (now - t0) > 1200 && (now - t0) < 6000 && lastNow) {
+      frames++; if (now - lastNow > 30) slow++;
+      if (frames >= 45) { if (slow > 24) { if (drawFrac > .55) drawFrac *= .8; else if (rsCap > 1.5) { rsCap = Math.max(1.5, rsCap - .5); layout(); } } frames = 0; slow = 0; }
     }
     lastNow = now; raf = requestAnimationFrame(frame);
   }
-  function play() { cancelAnimationFrame(raf); done = false; clock = 0; prevNow = 0; raf = requestAnimationFrame(frame); }
+  /* ------------------------------------------------------------ sound
+     Everything is synthesised (no audio files), in D major pentatonic so nothing can clash, and scheduled on the audio clock to the same timeline as the picture:
+       0–3.8s   a soft pad swells in; an airy whoosh follows the flight (low, rising across the top, falling as it turns back); tiny glass pings sparkle behind it,
+                panned left → right → left with the spark and getting a little busier; a faint rising shimmer gathers just before the landing
+       3.8s     the landing: one soft, low thump — and the pen starts writing
+       3.8–5.6  one glass note per letter, climbing the scale and moving left → right across the speakers with the pen
+       ~6s      the name is complete: a warm strummed chord rings out; "Product Designer" arrives on a breath of air
+       6–8s     the scatter: a thinning sprinkle of pings
+       after    the pad settles to a whisper, a rare twinkle now and then, and the pointer plays single soft notes
+     Browsers only allow sound after a tap, so the pill (or the first tap anywhere) switches it on and restarts the intro so picture and sound begin together. */
+  const sfx = (() => {
+    const PENT = [587.33, 659.25, 739.99, 880, 987.77, 1174.66, 1318.51, 1479.98, 1760, 1975.53];     /* D5 … B6 */
+    const pillEl = document.getElementById('snd'), pillTx = document.getElementById('sndTxt');
+    let ctx = null, input = null, master = null, bus = null, live = null, enabled = false, muted = false, idleT = 0, lastTouch = 0, reg = [], noiseB = null;
+    const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+    function graph(c) {                                          /* a gentle room, a soft limiter, then the speakers */
+      const len = Math.floor(c.sampleRate * 2.6), ir = c.createBuffer(2, len, c.sampleRate), r = rng(11);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (r() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+      const inp = c.createGain(), dry = c.createGain(), wet = c.createGain(), conv = c.createConvolver(), comp = c.createDynamicsCompressor(), mst = c.createGain();
+      conv.buffer = ir; dry.gain.value = .8; wet.gain.value = .5; mst.gain.value = .9;
+      comp.threshold.value = -16; comp.knee.value = 18; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .3;
+      inp.connect(dry); dry.connect(comp); inp.connect(conv); conv.connect(wet); wet.connect(comp); comp.connect(mst); mst.connect(c.destination);
+      return { inp, mst };
+    }
+    const keep = n => (reg.push(n), n);
+    function panner(c, out, p) { if (!p || !c.createStereoPanner) return out; const n = c.createStereoPanner(); n.pan.value = clamp(p, -1, 1); n.connect(out); return n; }
+    function bell(c, out, t, f, g, dec, pan) {                   /* a glass note: a pure tone plus a short, quiet overtone */
+      const o = keep(c.createOscillator()), o2 = keep(c.createOscillator()), e = c.createGain(), e2 = c.createGain(), dst = panner(c, out, pan);
+      o.frequency.value = f; o2.frequency.value = f * 2.76;
+      e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(g, t + .004); e.gain.exponentialRampToValueAtTime(.0001, t + dec);
+      e2.gain.setValueAtTime(0, t); e2.gain.linearRampToValueAtTime(g * .16, t + .003); e2.gain.exponentialRampToValueAtTime(.0001, t + dec * .35);
+      o.connect(e); o2.connect(e2); e.connect(dst); e2.connect(dst);
+      o.start(t); o.stop(t + dec + .05); o2.start(t); o2.stop(t + dec * .35 + .05);
+    }
+    function air(c, out, t, type, q, fpts, gpts) {               /* filtered noise whose pitch and loudness follow the given curves (seconds from t) */
+      if (!noiseB) { noiseB = c.createBuffer(1, c.sampleRate * 2, c.sampleRate); const d = noiseB.getChannelData(0), r = rng(7); for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1; }
+      const s = keep(c.createBufferSource()), f = c.createBiquadFilter(), g = c.createGain(); s.buffer = noiseB; s.loop = true; f.type = type; f.Q.value = q;
+      f.frequency.setValueAtTime(fpts[0][1], t + fpts[0][0]); fpts.slice(1).forEach(p => f.frequency.exponentialRampToValueAtTime(p[1], t + p[0]));
+      g.gain.setValueAtTime(0, t + gpts[0][0]); gpts.slice(1).forEach(p => g.gain.linearRampToValueAtTime(p[1], t + p[0]));
+      s.connect(f); f.connect(g); g.connect(out); s.start(t + gpts[0][0]); s.stop(t + gpts[gpts.length - 1][0] + .05);
+    }
+    function pad(c, out, t, ambient) {                           /* D · A · E · F♯ : a warm, open chord, two slightly detuned voices per note */
+      const lp = c.createBiquadFilter(), g = c.createGain(); lp.type = 'lowpass'; lp.Q.value = .5; lp.connect(g); g.connect(out);
+      if (ambient) { lp.frequency.value = 1100; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.022, t + 2.5); }
+      else {
+        lp.frequency.setValueAtTime(500, t); lp.frequency.exponentialRampToValueAtTime(1000, t + 3.8); lp.frequency.exponentialRampToValueAtTime(2600, t + 6.2); lp.frequency.exponentialRampToValueAtTime(1100, t + 9.5);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.034, t + 3.8); g.gain.linearRampToValueAtTime(.05, t + 6.4); g.gain.linearRampToValueAtTime(.022, t + 9.5);
+      }
+      [146.83, 220, 329.63, 369.99].forEach(f => [-5, 5].forEach(dt => { const o = keep(c.createOscillator()), v = c.createGain(); o.type = 'triangle'; o.frequency.value = f; o.detune.value = dt; v.gain.value = .2; o.connect(v); v.connect(lp); o.start(t); }));
+    }
+    function scoreSound(c, out, n, t) {
+      pad(c, out, t, false);
+      const r = rng(3), L = T.name;
+      /* the flight */
+      air(c, out, t, 'bandpass', .9, [[0, 250], [1, 900], [1.8, 2200], [2.6, 1200], [3.7, 500]], [[0, 0], [.5, .09], [1.8, .15], [3, .09], [3.8, 0]]);
+      air(c, out, t, 'highpass', 1, [[2.4, 1800], [3.8, 7000]], [[2.4, 0], [3.7, .035], [3.85, 0]]);
+      const panAt = x => x < 1 ? -.7 : x < 1.8 ? lerp(-.7, .7, (x - 1) / .8) : lerp(.7, -.4, clamp((x - 1.8) / 1.8));
+      for (let x = .35; x < 3.7; x += lerp(.34, .12, x / 3.7) * (.6 + .8 * r()))
+        bell(c, out, t + x, PENT[5 + Math.floor(r() * 5)] * (r() < .35 ? 2 : 1), .016 + .02 * r(), .5 + .5 * r(), panAt(x) + (r() - .5) * .4);
+      /* the landing */
+      { const o = keep(c.createOscillator()), e = c.createGain(); o.frequency.setValueAtTime(160, t + L); o.frequency.exponentialRampToValueAtTime(62, t + L + .45);
+        e.gain.setValueAtTime(0, t + L); e.gain.linearRampToValueAtTime(.1, t + L + .012); e.gain.exponentialRampToValueAtTime(.0001, t + L + .65); o.connect(e); e.connect(out); o.start(t + L); o.stop(t + L + .7); }
+      /* the pen writes */
+      for (let i = 0; i < n; i++) {                                    /* the pen: a soft, round note per letter (no glassy ring) and a faint whisper of the stroke */
+        const p = -.5 + i / Math.max(1, n - 1), x = t + L + i * T.step;
+        tone(c, out, x, deg(i), .05 + .01 * i / n, .02, .8, 'sine', p); tick(c, out, x, 4500, .02, .12, 1.2, p);
+      }
+      /* the name is complete */
+      const E = L + (n - 1) * T.step + .35;
+      [[293.66, .05, 4], [440, .035, 3.6], [587.33, .04, 3.4], [739.99, .03, 3.2], [880, .02, 3]].forEach(([f, g, d], k) => bell(c, out, t + E + k * .045, f, g, d, (k - 2) * .25));
+      air(c, out, t, 'bandpass', 1, [[E + .3, 5000], [E + 1.2, 6500]], [[E + .3, 0], [E + .8, .05], [E + 1.4, 0]]);
+      bell(c, out, t + E + .9, 1318.51, .03, 2, .3);
+      /* the scatter */
+      for (let x = E + .1, k = 0; x < E + 2.4; x += lerp(.1, .3, (x - E) / 2.4) * (.7 + .6 * r()), k++)
+        bell(c, out, t + x, PENT[4 + Math.floor(r() * 6)] * (r() < .3 ? 2 : 1), lerp(.022, .008, (x - E) / 2.4), 1.2, (r() - .5) * 1.6);
+    }
+
+    /* ---- more voices, for the other sound options (same timeline, same scale) ---- */
+    const deg = k => 293.66 * Math.pow(2, ([0, 2, 4, 7, 9][((k % 5) + 5) % 5] + 12 * Math.floor(k / 5)) / 12);          /* D major pentatonic, k=0 is D4 */
+    const env = (c, out, t, g, a, dec, pan) => { const e = c.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(g, t + a); e.gain.exponentialRampToValueAtTime(.0001, t + a + dec); e.connect(panner(c, out, pan)); return e; };
+    function tone(c, out, t, f, g, a, dec, type, pan, f2) {          /* a single oscillator note; f2 makes it glide */
+      const o = keep(c.createOscillator()), e = env(c, out, t, g, a, dec, pan); o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + Math.min(dec, .3)); o.connect(e); o.start(t); o.stop(t + a + dec + .05);
+    }
+    function tick(c, out, t, f, g, dur, q, pan) { air(c, panner(c, out, pan), t, 'bandpass', q || 1.2, [[0, f]], [[0, 0], [.004, g], [dur, 0]]); }
+
+    function stopScore() {
+      if (!bus) return; const b = bus, list = reg; bus = null; reg = [];
+      b.gain.setTargetAtTime(0, ctx.currentTime, .06);
+      setTimeout(() => { list.forEach(n => { try { n.stop(); } catch (e) {} }); try { b.disconnect(); } catch (e) {} }, 700);
+    }
+    function paint() {
+      pillEl.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      pillTx.textContent = enabled ? 'Sound on' : muted ? 'Sound off' : 'Tap for sound';
+    }
+    function init() {
+      if (ctx) return true;
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+      try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { return false; }
+      const g = graph(ctx); input = g.inp; master = g.mst; master.gain.value = 0;
+      live = ctx.createGain(); live.connect(input);
+      return true;
+    }
+    function setOn(on) {
+      enabled = on; master.gain.setTargetAtTime(on ? .9 : 0, ctx.currentTime, .06); paint();
+      if (on && !idleT) idleT = setInterval(() => {              /* afterwards: a rare, quiet twinkle, like the blinking stars */
+        if (!enabled || ctx.state !== 'running' || document.hidden || clock < T.name + 5 || Math.random() < .35) return;
+        bell(ctx, live, ctx.currentTime + Math.random() * 1.2, PENT[4 + Math.floor(Math.random() * 6)] * (Math.random() < .3 ? 2 : 1), .01 + .008 * Math.random(), 1.8, Math.random() * 1.6 - .8);
+      }, 2200);
+    }
+    function start(ambientOnly) {                                /* called whenever the intro (re)starts */
+      if (!init()) return;
+      stopScore();
+      if (!enabled) { if (!muted && ctx.state === 'running') setOn(true); else return; }
+      bus = ctx.createGain(); bus.connect(input);
+      if (ambientOnly) pad(ctx, bus, ctx.currentTime + .1, true); else scoreSound(ctx, bus, letters.length, ctx.currentTime + .1);
+    }
+    async function toggle() {
+      if (!init()) return;
+      if (enabled) { muted = true; pillEl.dataset.user = 1; setOn(false); return; }
+      muted = false; pillEl.dataset.user = 1;
+      try { await ctx.resume(); } catch (e) { return; }
+      setOn(true);
+      if (!reduced && FIX === null && clock < 6) play(); else start(true);   /* sound on early: begin the intro again so picture and sound start together */
+    }
+    function touch(nx, power) {                                  /* the pointer plays single soft notes */
+      if (!enabled || !ctx || ctx.state !== 'running') return;
+      const now = ctx.currentTime; if (now - lastTouch < .09) return; lastTouch = now;
+      bell(ctx, live, now + .005, PENT[clamp(Math.floor(nx * PENT.length), 0, PENT.length - 1)], .03 + .05 * power, power > .6 ? 1.6 : 1, (nx - .5) * 1.6);
+    }
+    pillEl.addEventListener('click', e => { e.stopPropagation(); toggle(); });
+    pillEl.addEventListener('pointerdown', e => e.stopPropagation());
+    paint();
+    const firstTap = e => { if (e.target && e.target.closest && e.target.closest('.sndwrap')) return; removeEventListener('pointerdown', firstTap, true); removeEventListener('keydown', firstTap, true); if (!enabled && !muted) toggle(); };
+    addEventListener('pointerdown', firstTap, true); addEventListener('keydown', firstTap, true);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && enabled && FIX === null && clock < T.name + 6) play(); });
+    window.__sfx = { render: async secs => { const c = new OfflineAudioContext(2, 44100 * secs, 44100), g = graph(c); noiseB = null; scoreSound(c, g.inp, 10, 0); noiseB = null; return c.startRendering(); } };
+    return { start, touch };
+  })();
+
+  function play() { cancelAnimationFrame(raf); done = false; clock = 0; prevNow = 0; raf = requestAnimationFrame(frame); sfx.start(); }
 
   /* if WebGL is unavailable or a shader fails on some GPU, the name still appears, softly, instead of a blank page */
   function plain() {
@@ -368,7 +527,7 @@
   document.documentElement.addEventListener('mouseleave', () => mouse.in = false);
   addEventListener('pointerdown', e => spawnRipple(e.clientX, e.clientY, .8));
   addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') play(); });
-  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); buildLetters(); buildParticles(); }, 150); });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); buildLetters(); }, 150);      /* (the stars don't depend on the window size, so they are not rebuilt: resizing never makes the sparkle jump) */ });
   start();
 })();
 </script>
